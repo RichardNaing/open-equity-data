@@ -9,7 +9,10 @@ import math
 from datetime import datetime, timezone
 from typing import Any
 
+import re
+
 import anyio
+import httpx
 import yfinance as yf
 
 from cache import cached
@@ -188,8 +191,64 @@ def _news(sym: str, limit: int) -> list[dict]:
     return out[:limit]
 
 
+RSS_FEEDS = [
+    ("Yahoo Finance", "https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym}&region=US&lang=en-US"),
+    ("Google News", "https://news.google.com/rss/search?q={sym}+stock&hl=en-US&gl=US&ceid=US:en"),
+]
+
+
+def parse_rss(xml_text: str, default_source: str, limit: int) -> list[dict]:
+    """Parse an RSS 2.0 feed into headline dicts (title, date, source, url)."""
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+
+    out = []
+    root = ET.fromstring(xml_text)
+    for it in root.iter("item"):
+        title = (it.findtext("title") or "").strip()
+        if not title:
+            continue
+        src_el = it.find("source")
+        source = (src_el.text or "").strip() if src_el is not None and src_el.text else default_source
+        if source != default_source and title.endswith(" - " + source):
+            title = title[: -len(" - " + source)]
+        when = it.findtext("pubDate") or ""
+        try:
+            iso = parsedate_to_datetime(when).astimezone(timezone.utc).isoformat()
+        except Exception:  # noqa: BLE001
+            iso = ""
+        desc = re.sub(r"<[^>]+>", " ", it.findtext("description") or "")
+        out.append({"date": iso[:10], "time": iso, "title": title, "source": source,
+                    "url": (it.findtext("link") or "").strip(), "summary": re.sub(r"\s+", " ", desc).strip()[:400]})
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def _rss_news(sym: str, limit: int) -> list[dict]:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0 (compatible; OpenEquityData/1.0)"}) as c:
+        for name, url in RSS_FEEDS:
+            try:
+                r = await c.get(url.format(sym=sym))
+                r.raise_for_status()
+                items = parse_rss(r.text, name, limit)
+                if items:
+                    return items
+            except Exception:  # noqa: BLE001
+                continue
+    return []
+
+
 async def news(sym: str, limit: int = 10) -> list[dict]:
-    return await cached(f"y:news:{sym}:{limit}", 600, lambda: _run(_news, sym, limit))
+    async def load():
+        try:
+            items = await _run(_news, sym, limit)
+        except Exception:  # noqa: BLE001
+            items = []
+        return items or await _rss_news(sym, limit)
+
+    return await cached(f"y:news:{sym}:{limit}", 600, load)
 
 
 # ------------------------------------------------------------------ peers

@@ -47,8 +47,8 @@ def check_pack(p: dict) -> list[str]:
         errs.append("no price history")
     if not p.get("estimates"):
         errs.append("no consensus estimates")
-    if not p.get("filings"):
-        errs.append("no SEC filings")
+    if not p.get("news"):
+        errs.append("no news headlines")
     if len(p.get("macro") or []) < 5:
         errs.append(f"macro indicators: {len(p.get('macro') or [])}")
     return errs
