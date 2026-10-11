@@ -36,6 +36,6 @@ def yahoo_probe():
             print("YAHOO EXC", name, traceback.format_exc().splitlines()[-1])
 
 
-print("UA:", UA)
+print("SEC contact configured:", bool(UA), "| has email:", "@" in UA)  # never print the contact itself
 asyncio.run(sec_probe())
 yahoo_probe()
