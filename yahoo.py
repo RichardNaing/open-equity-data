@@ -32,19 +32,49 @@ def _t(sym: str) -> yf.Ticker:
 
 
 # ------------------------------------------------------------------ quote & info
-def _quote(sym: str) -> dict:
+def _quote_fast(sym: str) -> dict:
     fi = _t(sym).fast_info
-    g = lambda k: _num(fi.get(k)) if hasattr(fi, "get") else _num(getattr(fi, k, None))  # noqa: E731
+
+    def g(k: str) -> float | None:
+        try:
+            return _num(fi[k])
+        except Exception:  # noqa: BLE001
+            return None
+
     price, prev = g("last_price"), g("previous_close") or g("regular_market_previous_close")
-    return {
-        "price": price, "prevClose": prev,
-        "changePct": (price / prev - 1) * 100 if price and prev else None,
-        "high52": g("year_high"), "low52": g("year_low"),
-        "avg50": g("fifty_day_average"), "avg200": g("two_hundred_day_average"),
-        "marketCap": g("market_cap"), "sharesOut": g("shares"),
-        "currency": fi.get("currency") if hasattr(fi, "get") else None,
-        "ts": int(datetime.now(timezone.utc).timestamp()),
-    }
+    return {"price": price, "prevClose": prev, "high52": g("year_high"), "low52": g("year_low"),
+            "avg50": g("fifty_day_average"), "avg200": g("two_hundred_day_average"),
+            "marketCap": g("market_cap"), "sharesOut": g("shares")}
+
+
+def _quote_info(sym: str) -> dict:
+    i = _info(sym)
+    n = lambda *ks: next((_num(i.get(k)) for k in ks if _num(i.get(k)) is not None), None)  # noqa: E731
+    return {"price": n("currentPrice", "regularMarketPrice"), "prevClose": n("regularMarketPreviousClose", "previousClose"),
+            "high52": n("fiftyTwoWeekHigh"), "low52": n("fiftyTwoWeekLow"), "avg50": n("fiftyDayAverage"),
+            "avg200": n("twoHundredDayAverage"), "marketCap": n("marketCap"), "sharesOut": n("sharesOutstanding"),
+            "currency": i.get("currency")}
+
+
+def _quote(sym: str) -> dict:
+    """fast_info first (lightweight); fall back to the full info payload, which is the more reliable path on cloud IPs."""
+    errors = []
+    out: dict = {}
+    for fn in (_quote_fast, _quote_info):
+        try:
+            got = fn(sym)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{fn.__name__}: {type(e).__name__}: {str(e)[:120]}")
+            continue
+        out = {**{k: v for k, v in got.items() if v is not None}, **{k: v for k, v in out.items() if v is not None}}
+        if out.get("price"):
+            break
+    if not out.get("price"):
+        raise RuntimeError("; ".join(errors) or "no price returned")
+    price, prev = out.get("price"), out.get("prevClose")
+    out["changePct"] = (price / prev - 1) * 100 if price and prev else None
+    out["ts"] = int(datetime.now(timezone.utc).timestamp())
+    return out
 
 
 async def quote(sym: str) -> dict:

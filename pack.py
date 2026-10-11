@@ -79,11 +79,15 @@ async def research_pack(symbol: str, include_macro: bool = True, news_limit: int
 
     if not _ok(q) or not (q or {}).get("price"):
         if not _ok(cik) or cik is None:
-            return {"symbol": sym, "error": "unknown_symbol", "message": f"No quote or SEC registration found for {sym}."}
-        warnings.append("Yahoo quote unavailable; price fields are empty.")
+            why = f"quote: {q!r}"[:300] + f" | sec: {cik!r}"[:300]
+            return {"symbol": sym, "error": "unknown_symbol", "message": f"No quote or SEC registration found for {sym}. {why}"}
+        warnings.append(f"Yahoo quote unavailable ({str(q)[:160]}); price fields are empty.")
         q = {}
     else:
         sources["quote"] = "Yahoo Finance (yfinance)"
+    if not _ok(cik):
+        warnings.append(f"SEC ticker lookup failed: {str(cik)[:160]}")
+        cik = None
     info = info if _ok(info) else {}
     splits = splits if _ok(splits) else []
     if not _ok(splits):
