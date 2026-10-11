@@ -1,0 +1,36 @@
+name: Live data test
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 13 * * 1-5"   # weekdays before the US open
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SEC_USER_AGENT: "OpenEquityData research (https://github.com/RichardNaing/open-equity-data) oed-bot@users.noreply.github.com"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -r requirements.txt pytest
+      - name: Offline tests (fixtures + MCP transport)
+        run: python -m pytest -q
+      - name: Live check (real SEC, Yahoo, FRED over MCP)
+        run: python live_check.py MSFT NVDA JPM
+      - name: Save live results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-check
+          path: live_check.json
+          if-no-files-found: ignore
