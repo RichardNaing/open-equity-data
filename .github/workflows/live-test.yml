@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      SEC_USER_AGENT: "OpenEquityData research oed-bot@users.noreply.github.com"
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT || 'OpenEquityData research oed-bot@users.noreply.github.com' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
