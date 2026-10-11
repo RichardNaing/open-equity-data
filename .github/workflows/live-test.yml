@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      SEC_USER_AGENT: "OpenEquityData research (https://github.com/RichardNaing/open-equity-data) oed-bot@users.noreply.github.com"
+      SEC_USER_AGENT: "OpenEquityData research oed-bot@users.noreply.github.com"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,12 +25,9 @@ jobs:
         run: pip install -r requirements.txt pytest
       - name: Offline tests (fixtures + MCP transport)
         run: python -m pytest -q
+      - name: Source diagnostics
+        run: |
+          python diag.py 2>&1 | tee diag.txt
+          { echo '### Source diagnostics'; echo '```'; cat diag.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Live check (real SEC, Yahoo, FRED over MCP)
         run: python live_check.py MSFT NVDA JPM
-      - name: Save live results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: live-check
-          path: live_check.json
-          if-no-files-found: ignore
